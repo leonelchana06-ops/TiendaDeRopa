@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Historial de ventas · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Historial de ventas</h1>
+      <p>Consulta de las ventas realizadas. Haga clic en una venta para ver su detalle.</p>
+    </div>
+    <div class="acciones"><a class="btn btn-primario" href="venta.html">+ Nueva venta</a></div>
+  </div>
+
+  <section class="tarjeta" style="margin-bottom:16px">
+    <form id="filtros" class="tarjeta-cuerpo filtros">
+      <div class="campo"><label for="desde">Desde</label><input type="date" id="desde" name="desde"></div>
+      <div class="campo"><label for="hasta">Hasta</label><input type="date" id="hasta" name="hasta"></div>
+      <div class="campo"><label for="idCliente">Cliente</label><select id="idCliente" name="idCliente"><option value="">Todos</option></select></div>
+      <div class="campo"><label for="idEmpleado">Empleado</label><select id="idEmpleado" name="idEmpleado"><option value="">Todos</option></select></div>
+      <button class="btn btn-primario" type="submit">Filtrar</button>
+      <button class="btn" type="button" id="limpiar">Limpiar</button>
+    </form>
+  </section>
+
+  <section class="tarjeta tabla-contenedor">
+    <table>
+      <thead><tr><th>N°</th><th>Fecha y hora</th><th>Cliente</th><th>Empleado</th><th class="num">Unidades</th><th class="num">Total</th></tr></thead>
+      <tbody id="tabla"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+      <tfoot id="pie"></tfoot>
+    </table>
+  </section>
+</main>
+
+<dialog id="dlgDetalle" class="ancho">
+  <div class="dialogo-cabecera"><h2 id="tituloDetalle">Venta</h2><button type="button" class="cerrar" id="cerrarDetalle" aria-label="Cerrar">×</button></div>
+  <div class="dialogo-cuerpo" id="cuerpoDetalle"></div>
+  <div class="dialogo-pie"><button class="btn" onclick="window.print()">Imprimir</button><button class="btn btn-primario" id="cerrarDetalle2">Cerrar</button></div>
+</dialog>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const params = new URLSearchParams(location.search);
+
+  try {
+    const [clientes, empleados] = await Promise.all([api("GET", "/api/clientes"), api("GET", "/api/empleados")]);
+    idCliente.innerHTML += clientes.map((c) => `<option value="${c.idCliente}">${esc(c.nombreCompleto)}</option>`).join("");
+    idEmpleado.innerHTML += empleados.map((e) => `<option value="${e.idEmpleado}">${esc(e.nombreCompleto)}</option>`).join("");
+  } catch (e) { aviso(e.message, "error"); }
+
+  for (const k of ["desde", "hasta", "idCliente", "idEmpleado"]) {
+    if (params.get(k)) document.getElementById(k).value = params.get(k);
+  }
+
+  async function cargar() {
+    const q = new URLSearchParams();
+    for (const [k, v] of new FormData(filtros)) if (v) q.set(k, v);
+    try {
+      const ventas = await api("GET", "/api/ventas?" + q);
+      tabla.innerHTML = ventas.length ? ventas.map((v) => `
+        <tr class="clic" data-id="${v.idVenta}">
+          <td><strong>#${v.idVenta}</strong></td>
+          <td>${fechaHora(v.fechaHora)}</td>
+          <td>${esc(v.cliente.nombreCompleto)}</td>
+          <td>${esc(v.empleado.nombreCompleto)}</td>
+          <td class="num">${v.unidades}</td>
+          <td class="num"><strong>${dinero(v.total)}</strong></td>
+        </tr>`).join("")
+        : `<tr><td colspan="6" class="vacio">No hay ventas para los filtros seleccionados.</td></tr>`;
+      const suma = ventas.reduce((s, v) => s + v.total, 0);
+      pie.innerHTML = ventas.length
+        ? `<tr><th colspan="5">${ventas.length} venta(s)</th><th class="num">${dinero(suma)}</th></tr>` : "";
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  async function verDetalle(id) {
+    try {
+      const v = await api("GET", `/api/ventas/${id}`);
+      tituloDetalle.textContent = `Venta #${v.idVenta}`;
+      cuerpoDetalle.innerHTML = `
+        <div class="datos-venta">
+          <div><span>Fecha y hora</span>${fechaHora(v.fechaHora)}</div>
+          <div><span>Cliente</span>${esc(v.cliente.nombreCompleto)}${v.cliente.telefono ? `<div class="secundario">${esc(v.cliente.telefono)}</div>` : ""}</div>
+          <div><span>Empleado</span>${esc(v.empleado.nombreCompleto)}<div class="secundario">${esc(v.empleado.cargo)}</div></div>
+        </div>
+        <div class="tabla-contenedor"><table>
+          <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unit.</th><th class="num">Subtotal</th></tr></thead>
+          <tbody>${v.detalles.map((d) => `
+            <tr><td>${esc(d.producto.nombre)}</td><td class="num">${d.cantidad}</td>
+                <td class="num">${dinero(d.precioUnitario)}</td><td class="num">${dinero(d.subtotal)}</td></tr>`).join("")}</tbody>
+          <tfoot><tr><th colspan="3">Total</th><th class="num">${dinero(v.total)}</th></tr></tfoot>
+        </table></div>`;
+      dlgDetalle.showModal();
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  filtros.addEventListener("submit", (e) => { e.preventDefault(); cargar(); });
+  limpiar.addEventListener("click", () => { filtros.reset(); history.replaceState(null, "", "ventas.html"); cargar(); });
+  tabla.addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) verDetalle(tr.dataset.id); });
+  cerrarDetalle.onclick = cerrarDetalle2.onclick = () => dlgDetalle.close();
+
+  await cargar();
+  if (params.get("id")) verDetalle(params.get("id"));
+});
+</script>
+</body>
+</html>

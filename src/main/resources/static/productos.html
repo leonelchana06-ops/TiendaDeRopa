@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Productos · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Productos</h1>
+      <p>Registro, modificación, baja, consulta y control de stock de prendas.</p>
+    </div>
+    <div class="acciones">
+      <input id="buscar" class="buscador" type="search" placeholder="Buscar por nombre o descripción…">
+      <button class="btn btn-primario" id="nuevo">+ Nuevo producto</button>
+    </div>
+  </div>
+
+  <section class="tarjeta tabla-contenedor">
+    <table>
+      <thead>
+        <tr><th>Código</th><th>Producto</th><th class="num">Precio</th><th class="num">Stock</th><th></th></tr>
+      </thead>
+      <tbody id="tabla"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- Alta / modificación -->
+<dialog id="dlgProducto">
+  <form id="formProducto" novalidate>
+    <div class="dialogo-cabecera"><h2>Nuevo producto</h2><button type="button" class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dialogo-cuerpo">
+      <div class="error-form oculto"></div>
+      <div class="campo">
+        <label for="nombre">Nombre</label>
+        <input id="nombre" name="nombre" required maxlength="100" placeholder="Ej.: Remera básica">
+      </div>
+      <div class="campo">
+        <label for="descripcion">Descripción <span class="opcional">(opcional: material, color, talle…)</span></label>
+        <textarea id="descripcion" name="descripcion" maxlength="2000"></textarea>
+      </div>
+      <div class="fila">
+        <div class="campo">
+          <label for="precio">Precio unitario ($)</label>
+          <input id="precio" name="precio" type="number" required min="0.01" max="99999999.99" step="0.01" inputmode="decimal">
+        </div>
+        <div class="campo">
+          <label for="stock">Stock (unidades)</label>
+          <input id="stock" name="stock" type="number" required min="0" step="1" inputmode="numeric">
+        </div>
+      </div>
+    </div>
+    <div class="dialogo-pie">
+      <button type="button" class="btn" data-cerrar>Cancelar</button>
+      <button type="submit" class="btn btn-primario">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Ajuste de stock -->
+<dialog id="dlgStock">
+  <form id="formStock" novalidate>
+    <div class="dialogo-cabecera"><h2>Ajustar stock</h2><button type="button" class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dialogo-cuerpo">
+      <div class="error-form oculto"></div>
+      <p id="stockInfo" class="secundario" style="margin-top:0"></p>
+      <div class="fila">
+        <div class="campo">
+          <label for="tipoAjuste">Movimiento</label>
+          <select id="tipoAjuste"><option value="1">Ingreso de mercadería (+)</option><option value="-1">Egreso / merma (−)</option></select>
+        </div>
+        <div class="campo">
+          <label for="cantAjuste">Cantidad</label>
+          <input id="cantAjuste" type="number" required min="1" step="1" value="1">
+        </div>
+      </div>
+    </div>
+    <div class="dialogo-pie">
+      <button type="button" class="btn" data-cerrar>Cancelar</button>
+      <button type="submit" class="btn btn-primario">Aplicar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  let lista = [];
+  let ajustando = null;
+
+  async function cargar() {
+    try {
+      const q = buscar.value.trim();
+      lista = await api("GET", "/api/productos" + (q ? "?buscar=" + encodeURIComponent(q) : ""));
+      tabla.innerHTML = lista.length ? lista.map((p, i) => `
+        <tr>
+          <td class="secundario">#${p.idProducto}</td>
+          <td><strong>${esc(p.nombre)}</strong>${p.descripcion ? `<div class="secundario">${esc(p.descripcion)}</div>` : ""}</td>
+          <td class="num">${dinero(p.precio)}</td>
+          <td class="num">${chipStock(p.stock)}</td>
+          <td class="acc">
+            <button class="btn btn-chico" data-stock="${i}">Stock</button>
+            <button class="btn btn-chico" data-editar="${i}">Editar</button>
+            <button class="btn btn-chico btn-peligro" data-borrar="${i}">Eliminar</button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="5" class="vacio">${q ? "Sin resultados para la búsqueda." : "No hay productos cargados."}</td></tr>`;
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  const abmProducto = abm({
+    url: "/api/productos", idCampo: "idProducto", dialogo: "dlgProducto", form: "formProducto",
+    titulo: ["Nuevo producto", "Modificar producto"], cargar, nombre: (p) => p.nombre,
+  });
+
+  nuevo.addEventListener("click", () => abmProducto.abrir());
+  buscar.addEventListener("input", demorar(cargar));
+  tabla.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.editar) abmProducto.abrir(lista[b.dataset.editar]);
+    if (b.dataset.borrar) abmProducto.eliminar(lista[b.dataset.borrar]);
+    if (b.dataset.stock) {
+      ajustando = lista[b.dataset.stock];
+      formStock.reset();
+      errorEn(formStock, "");
+      stockInfo.textContent = `${ajustando.nombre} — stock actual: ${ajustando.stock} unidades`;
+      dlgStock.showModal();
+    }
+  });
+
+  dlgStock.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => dlgStock.close()));
+  formStock.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!formStock.reportValidity()) return;
+    try {
+      const cantidad = Number(tipoAjuste.value) * Number(cantAjuste.value);
+      const r = await api("POST", `/api/productos/${ajustando.idProducto}/stock`, { cantidad });
+      dlgStock.close();
+      aviso(`Stock actualizado: ${r.stock} unidades.`);
+      cargar();
+    } catch (err) { errorEn(formStock, err.message); }
+  });
+
+  cargar();
+});
+</script>
+</body>
+</html>

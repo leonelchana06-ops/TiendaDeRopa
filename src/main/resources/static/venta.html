@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nueva venta · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Registrar venta</h1>
+      <p>Seleccione cliente y empleado, agregue los productos y confirme. El stock se descuenta automáticamente.</p>
+    </div>
+  </div>
+
+  <div class="grilla grilla-venta">
+    <!-- Productos de la venta -->
+    <section class="tarjeta">
+      <div class="tarjeta-cuerpo">
+        <h2>Productos</h2>
+        <form id="formAgregar" class="agregar-producto" novalidate>
+          <div class="campo">
+            <label for="producto">Producto</label>
+            <select id="producto" required><option value="">Cargando…</option></select>
+          </div>
+          <div class="campo">
+            <label for="cantidad">Cantidad</label>
+            <input id="cantidad" type="number" min="1" step="1" value="1" required>
+          </div>
+          <button class="btn btn-primario" type="submit">Agregar</button>
+        </form>
+      </div>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Producto</th><th class="num">Precio unit.</th><th class="num">Cantidad</th><th class="num">Subtotal</th><th></th></tr></thead>
+          <tbody id="renglones"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Datos y total -->
+    <aside class="tarjeta lateral">
+      <div class="tarjeta-cuerpo">
+        <h2>Datos de la venta</h2>
+        <div class="campo">
+          <label for="cliente">Cliente</label>
+          <select id="cliente" required></select>
+          <div style="margin-top:6px"><a href="clientes.html" class="secundario">+ Registrar cliente nuevo</a></div>
+        </div>
+        <div class="campo">
+          <label for="empleado">Empleado que vende</label>
+          <select id="empleado" required></select>
+        </div>
+        <div class="total-linea"><span>Productos distintos</span><span id="cantRenglones">0</span></div>
+        <div class="total-linea"><span>Unidades</span><span id="cantUnidades">0</span></div>
+        <div class="total-final"><span>Total</span><strong id="total">$ 0,00</strong></div>
+        <div class="error-form oculto" id="errorVenta"></div>
+        <button class="btn btn-primario btn-bloque" id="confirmar" disabled>Confirmar venta</button>
+        <button class="btn btn-bloque" id="vaciar" style="margin-top:8px">Vaciar</button>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<!-- Comprobante -->
+<dialog id="dlgListo">
+  <div class="dialogo-cabecera"><h2>✅ Venta registrada</h2></div>
+  <div class="dialogo-cuerpo" id="resumenListo"></div>
+  <div class="dialogo-pie">
+    <a class="btn" id="verDetalle" href="ventas.html">Ver en historial</a>
+    <button class="btn btn-primario" id="otraVenta">Nueva venta</button>
+  </div>
+</dialog>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  let productos = [];          // catálogo cargado desde la BD
+  const carrito = new Map();   // idProducto -> cantidad
+
+  async function cargarCatalogo() {
+    try {
+      const [prods, clientes, empleados] = await Promise.all([
+        api("GET", "/api/productos"), api("GET", "/api/clientes"), api("GET", "/api/empleados")]);
+      productos = prods;
+      llenarProductos();
+      cliente.innerHTML = `<option value="">— Seleccione —</option>` +
+        clientes.map((c) => `<option value="${c.idCliente}">${esc(c.nombreCompleto)}</option>`).join("");
+      empleado.innerHTML = `<option value="">— Seleccione —</option>` +
+        empleados.map((e) => `<option value="${e.idEmpleado}">${esc(e.nombreCompleto)} · ${esc(e.cargo)}</option>`).join("");
+      const cf = clientes.find((c) => c.nombre === "Final" && c.apellido === "Consumidor");
+      if (cf) cliente.value = cf.idCliente;
+      if (empleados.length === 1) empleado.value = empleados[0].idEmpleado;
+      dibujar();
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  const disponible = (p) => p.stock - (carrito.get(p.idProducto) || 0);
+
+  function llenarProductos() {
+    const actual = producto.value;
+    producto.innerHTML = `<option value="">— Seleccione un producto —</option>` + productos.map((p) => {
+      const d = disponible(p);
+      return `<option value="${p.idProducto}" ${d <= 0 ? "disabled" : ""}>${esc(p.nombre)} — ${dinero(p.precio)} (${d > 0 ? "disp. " + d : "sin stock"})</option>`;
+    }).join("");
+    producto.value = actual;
+  }
+
+  function dibujar() {
+    const filas = [...carrito.entries()].map(([id, cant]) => {
+      const p = productos.find((x) => x.idProducto === id);
+      return { p, cant, subtotal: Math.round(p.precio * cant * 100) / 100 };
+    });
+    renglones.innerHTML = filas.length ? filas.map(({ p, cant, subtotal }) => `
+      <tr>
+        <td><strong>${esc(p.nombre)}</strong><div class="secundario">Stock: ${p.stock}</div></td>
+        <td class="num">${dinero(p.precio)}</td>
+        <td class="num"><input class="cant-input" type="number" min="1" max="${p.stock}" step="1" value="${cant}" data-id="${p.idProducto}" aria-label="Cantidad"></td>
+        <td class="num"><strong>${dinero(subtotal)}</strong></td>
+        <td class="acc"><button class="btn btn-chico btn-peligro" data-quitar="${p.idProducto}" aria-label="Quitar">✕</button></td>
+      </tr>`).join("")
+      : `<tr><td colspan="5" class="vacio">Todavía no se agregaron productos.</td></tr>`;
+
+    const total = filas.reduce((s, f) => s + f.subtotal, 0);
+    document.getElementById("total").textContent = dinero(total);
+    cantRenglones.textContent = filas.length;
+    cantUnidades.textContent = filas.reduce((s, f) => s + f.cant, 0);
+    confirmar.disabled = filas.length === 0;
+    llenarProductos();
+  }
+
+  function mostrarError(msg) {
+    errorVenta.textContent = msg || "";
+    errorVenta.classList.toggle("oculto", !msg);
+  }
+
+  formAgregar.addEventListener("submit", (e) => {
+    e.preventDefault();
+    mostrarError("");
+    const id = Number(producto.value);
+    const cant = Number(cantidad.value);
+    if (!id) return aviso("Seleccione un producto.", "error");
+    if (!Number.isInteger(cant) || cant < 1) return aviso("La cantidad debe ser un entero mayor a 0.", "error");
+    const p = productos.find((x) => x.idProducto === id);
+    if (cant > disponible(p)) return aviso(`Solo hay ${disponible(p)} unidad(es) disponibles de «${p.nombre}».`, "error");
+    carrito.set(id, (carrito.get(id) || 0) + cant);
+    cantidad.value = 1;
+    producto.value = "";
+    dibujar();
+  });
+
+  renglones.addEventListener("change", (e) => {
+    if (!e.target.matches(".cant-input")) return;
+    const id = Number(e.target.dataset.id);
+    const p = productos.find((x) => x.idProducto === id);
+    let cant = Math.floor(Number(e.target.value));
+    if (!cant || cant < 1) cant = 1;
+    if (cant > p.stock) { cant = p.stock; aviso(`Stock máximo de «${p.nombre}»: ${p.stock}.`, "error"); }
+    carrito.set(id, cant);
+    dibujar();
+  });
+
+  renglones.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-quitar]");
+    if (b) { carrito.delete(Number(b.dataset.quitar)); dibujar(); }
+  });
+
+  vaciar.addEventListener("click", () => {
+    if (carrito.size && !confirm("¿Quitar todos los productos de la venta?")) return;
+    carrito.clear(); mostrarError(""); dibujar();
+  });
+
+  confirmar.addEventListener("click", async () => {
+    mostrarError("");
+    if (!cliente.value) return mostrarError("Seleccione un cliente.");
+    if (!empleado.value) return mostrarError("Seleccione el empleado que realiza la venta.");
+    if (!carrito.size) return mostrarError("Agregue al menos un producto.");
+    confirmar.disabled = true;
+    try {
+      const venta = await api("POST", "/api/ventas", {
+        idCliente: Number(cliente.value),
+        idEmpleado: Number(empleado.value),
+        items: [...carrito.entries()].map(([idProducto, cantidad]) => ({ idProducto, cantidad })),
+      });
+      resumenListo.innerHTML = `
+        <div class="datos-venta">
+          <div><span>Venta N°</span><strong>#${venta.idVenta}</strong></div>
+          <div><span>Fecha</span>${fechaHora(venta.fechaHora)}</div>
+          <div><span>Cliente</span>${esc(venta.cliente.nombreCompleto)}</div>
+          <div><span>Vendió</span>${esc(venta.empleado.nombreCompleto)}</div>
+        </div>
+        <table><tbody>${venta.detalles.map((d) => `
+          <tr><td>${d.cantidad} × ${esc(d.producto.nombre)}</td><td class="num">${dinero(d.subtotal)}</td></tr>`).join("")}
+          <tr><td><strong>Total</strong></td><td class="num"><strong>${dinero(venta.total)}</strong></td></tr>
+        </tbody></table>`;
+      verDetalle.href = `ventas.html?id=${venta.idVenta}`;
+      dlgListo.showModal();
+    } catch (err) {
+      mostrarError(err.message);
+      confirmar.disabled = false;
+      await recargarStock();   // el stock pudo cambiar (otra venta simultánea)
+    }
+  });
+
+  async function recargarStock() {
+    try { productos = await api("GET", "/api/productos"); dibujar(); } catch { /* ignorar */ }
+  }
+
+  otraVenta.addEventListener("click", async () => {
+    dlgListo.close();
+    carrito.clear();
+    await recargarStock();
+  });
+
+  cargarCatalogo();
+});
+</script>
+</body>
+</html>

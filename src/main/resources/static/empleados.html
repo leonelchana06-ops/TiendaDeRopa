@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Empleados · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Empleados</h1>
+      <p>Personal que trabaja en el local y realiza las ventas.</p>
+    </div>
+    <div class="acciones">
+      <button class="btn btn-primario" id="nuevo">+ Nuevo empleado</button>
+    </div>
+  </div>
+
+  <section class="tarjeta tabla-contenedor">
+    <table>
+      <thead><tr><th>Código</th><th>Apellido y nombre</th><th>Cargo</th><th></th></tr></thead>
+      <tbody id="tabla"><tr><td colspan="4" class="vacio">Cargando…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<dialog id="dlgEmpleado">
+  <form id="formEmpleado" novalidate>
+    <div class="dialogo-cabecera"><h2>Nuevo empleado</h2><button type="button" class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dialogo-cuerpo">
+      <div class="error-form oculto"></div>
+      <div class="fila">
+        <div class="campo"><label for="nombre">Nombre</label><input id="nombre" name="nombre" required maxlength="100"></div>
+        <div class="campo"><label for="apellido">Apellido</label><input id="apellido" name="apellido" required maxlength="100"></div>
+      </div>
+      <div class="campo">
+        <label for="cargo">Cargo</label>
+        <input id="cargo" name="cargo" required maxlength="50" list="cargos" placeholder="Ej.: Vendedor/a">
+        <datalist id="cargos"><option value="Vendedor/a"><option value="Cajero/a"><option value="Encargado/a"><option value="Repositor/a"></datalist>
+      </div>
+    </div>
+    <div class="dialogo-pie">
+      <button type="button" class="btn" data-cerrar>Cancelar</button>
+      <button type="submit" class="btn btn-primario">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  let lista = [];
+
+  async function cargar() {
+    try {
+      lista = await api("GET", "/api/empleados");
+      tabla.innerHTML = lista.length ? lista.map((e, i) => `
+        <tr>
+          <td class="secundario">#${e.idEmpleado}</td>
+          <td><strong>${esc(e.nombreCompleto)}</strong></td>
+          <td>${esc(e.cargo)}</td>
+          <td class="acc">
+            <a class="btn btn-chico" href="ventas.html?idEmpleado=${e.idEmpleado}">Ventas</a>
+            <button class="btn btn-chico" data-editar="${i}">Editar</button>
+            <button class="btn btn-chico btn-peligro" data-borrar="${i}">Eliminar</button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="4" class="vacio">No hay empleados registrados.</td></tr>`;
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  const abmEmpleado = abm({
+    url: "/api/empleados", idCampo: "idEmpleado", dialogo: "dlgEmpleado", form: "formEmpleado",
+    titulo: ["Nuevo empleado", "Modificar empleado"], cargar, nombre: (e) => e.nombreCompleto,
+  });
+
+  nuevo.addEventListener("click", () => abmEmpleado.abrir());
+  tabla.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.editar) abmEmpleado.abrir(lista[b.dataset.editar]);
+    if (b.dataset.borrar) abmEmpleado.eliminar(lista[b.dataset.borrar]);
+  });
+
+  cargar();
+});
+</script>
+</body>
+</html>

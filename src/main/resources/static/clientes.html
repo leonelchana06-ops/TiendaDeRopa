@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clientes · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Clientes</h1>
+      <p>Registro, modificación y consulta de los compradores.</p>
+    </div>
+    <div class="acciones">
+      <input id="buscar" class="buscador" type="search" placeholder="Buscar por nombre, teléfono o correo…">
+      <button class="btn btn-primario" id="nuevo">+ Nuevo cliente</button>
+    </div>
+  </div>
+
+  <section class="tarjeta tabla-contenedor">
+    <table>
+      <thead><tr><th>Código</th><th>Apellido y nombre</th><th>Teléfono</th><th>Correo</th><th></th></tr></thead>
+      <tbody id="tabla"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<dialog id="dlgCliente">
+  <form id="formCliente" novalidate>
+    <div class="dialogo-cabecera"><h2>Nuevo cliente</h2><button type="button" class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dialogo-cuerpo">
+      <div class="error-form oculto"></div>
+      <div class="fila">
+        <div class="campo"><label for="nombre">Nombre</label><input id="nombre" name="nombre" required maxlength="100"></div>
+        <div class="campo"><label for="apellido">Apellido</label><input id="apellido" name="apellido" required maxlength="100"></div>
+      </div>
+      <div class="campo">
+        <label for="telefono">Teléfono <span class="opcional">(opcional)</span></label>
+        <input id="telefono" name="telefono" type="tel" maxlength="20" pattern="[0-9+\-\s\(\)]{6,20}" title="Entre 6 y 20 caracteres: números, espacios, +, - o paréntesis" placeholder="Ej.: 3885 123456">
+      </div>
+      <div class="campo">
+        <label for="correo">Correo electrónico <span class="opcional">(opcional)</span></label>
+        <input id="correo" name="correo" type="email" maxlength="100" placeholder="nombre@correo.com">
+      </div>
+    </div>
+    <div class="dialogo-pie">
+      <button type="button" class="btn" data-cerrar>Cancelar</button>
+      <button type="submit" class="btn btn-primario">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  let lista = [];
+
+  async function cargar() {
+    try {
+      const q = buscar.value.trim();
+      lista = await api("GET", "/api/clientes" + (q ? "?buscar=" + encodeURIComponent(q) : ""));
+      tabla.innerHTML = lista.length ? lista.map((c, i) => `
+        <tr>
+          <td class="secundario">#${c.idCliente}</td>
+          <td><strong>${esc(c.nombreCompleto)}</strong></td>
+          <td>${esc(c.telefono || "—")}</td>
+          <td>${c.correo ? `<a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a>` : "—"}</td>
+          <td class="acc">
+            <a class="btn btn-chico" href="ventas.html?idCliente=${c.idCliente}">Compras</a>
+            <button class="btn btn-chico" data-editar="${i}">Editar</button>
+            <button class="btn btn-chico btn-peligro" data-borrar="${i}">Eliminar</button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="5" class="vacio">${q ? "Sin resultados para la búsqueda." : "No hay clientes registrados."}</td></tr>`;
+    } catch (e) { aviso(e.message, "error"); }
+  }
+
+  const abmCliente = abm({
+    url: "/api/clientes", idCampo: "idCliente", dialogo: "dlgCliente", form: "formCliente",
+    titulo: ["Nuevo cliente", "Modificar cliente"], cargar, nombre: (c) => c.nombreCompleto,
+  });
+
+  nuevo.addEventListener("click", () => abmCliente.abrir());
+  buscar.addEventListener("input", demorar(cargar));
+  tabla.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.editar) abmCliente.abrir(lista[b.dataset.editar]);
+    if (b.dataset.borrar) abmCliente.eliminar(lista[b.dataset.borrar]);
+  });
+
+  cargar();
+});
+</script>
+</body>
+</html>

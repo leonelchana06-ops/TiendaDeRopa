@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inicio · Tienda de Ropa</title>
+  <link rel="icon" href="img/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<main>
+  <div class="encabezado">
+    <div>
+      <h1>Panel principal</h1>
+      <p>Resumen del comercio al día de hoy.</p>
+    </div>
+    <div class="acciones">
+      <a class="btn btn-primario" href="venta.html">+ Registrar venta</a>
+    </div>
+  </div>
+
+  <div class="grilla grilla-4" style="margin-bottom:16px">
+    <div class="tarjeta indicador"><div class="etiqueta">Vendido hoy</div><div class="valor" id="montoHoy">–</div><div class="nota" id="ventasHoy"></div></div>
+    <div class="tarjeta indicador"><div class="etiqueta">Vendido en total</div><div class="valor" id="montoTotal">–</div><div class="nota" id="ventasTotal"></div></div>
+    <div class="tarjeta indicador"><div class="etiqueta">Productos</div><div class="valor" id="productos">–</div><div class="nota" id="unidades"></div></div>
+    <div class="tarjeta indicador"><div class="etiqueta">Clientes</div><div class="valor" id="clientes">–</div><div class="nota">registrados</div></div>
+  </div>
+
+  <div class="grilla" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+    <section class="tarjeta">
+      <div class="tarjeta-cuerpo" style="padding-bottom:0"><h2>Stock bajo (5 unidades o menos)</h2></div>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Producto</th><th class="num">Stock</th></tr></thead>
+          <tbody id="stockBajo"><tr><td colspan="2" class="vacio">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="tarjeta">
+      <div class="tarjeta-cuerpo" style="padding-bottom:0"><h2>Últimas ventas</h2></div>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>N°</th><th>Cliente</th><th class="num">Total</th></tr></thead>
+          <tbody id="ultimas"><tr><td colspan="3" class="vacio">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="js/comun.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const [r, productos, ventas] = await Promise.all([
+      api("GET", "/api/resumen"), api("GET", "/api/productos"), api("GET", "/api/ventas")]);
+
+    montoHoy.textContent = dinero(r.montoHoy);
+    ventasHoy.textContent = `${r.ventasHoy} venta(s)`;
+    montoTotal.textContent = dinero(r.montoTotal);
+    ventasTotal.textContent = `${r.ventasTotal} venta(s)`;
+    document.getElementById("productos").textContent = r.productos;
+    unidades.textContent = `${r.unidadesStock} unidades en stock`;
+    clientes.textContent = r.clientes;
+
+    const bajos = productos.filter((p) => p.stock <= 5).sort((a, b) => a.stock - b.stock);
+    stockBajo.innerHTML = bajos.length
+      ? bajos.map((p) => `<tr><td>${esc(p.nombre)}</td><td class="num">${chipStock(p.stock)}</td></tr>`).join("")
+      : `<tr><td colspan="2" class="vacio">Todo el stock está en niveles normales.</td></tr>`;
+
+    ultimas.innerHTML = ventas.length
+      ? ventas.slice(0, 6).map((v) => `
+          <tr class="clic" onclick="location.href='ventas.html?id=${v.idVenta}'">
+            <td>#${v.idVenta}<div class="secundario">${fechaHora(v.fechaHora)}</div></td>
+            <td>${esc(v.cliente.nombreCompleto)}</td>
+            <td class="num">${dinero(v.total)}</td></tr>`).join("")
+      : `<tr><td colspan="3" class="vacio">Aún no hay ventas. <a href="venta.html">Registrar la primera</a></td></tr>`;
+  } catch (e) {
+    aviso(e.message, "error");
+  }
+});
+</script>
+</body>
+</html>
